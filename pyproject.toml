@@ -2,7 +2,7 @@
 name = "drug-classification"
 version = "0.1.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
+authors = ["Orkhan <qochuorxan@mail.ru>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
@@ -22,7 +22,7 @@ line-length = 90
 target-version = ["py39"]
 
 [tool.isort]
-src_paths = ["mnist_example"]
+src_paths = ["le"]
 profile = "black"
 line_length = 90
 lines_after_imports = 2
