@@ -2,29 +2,33 @@
 Train model.
 """
 
+import os
+
+import hydra
+import mlflow
 import pandas as pd
 import torch
 from classification_network import ClassificationNetwork
 from encoder import Encoder
 from my_dataset import MyDataset
-from sklearn.model_selection import train_test_split
+from omegaconf import DictConfig
 from torch import nn
 from torch.utils.data import DataLoader, random_split
 
 
-DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+@hydra.main(config_path="config", config_name="config", version_base="1.3.2")
+def main(cfg: DictConfig):
+    """
+    Main function.
+    """
 
+    DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-def main():
-    data = pd.read_csv("drug200.csv")
+    train_data = pd.read_csv("data/train-drug200.csv")
 
-    x_data, y_data = data.drop(columns=["Drug"]), data["Drug"]
-    x_shape = x_data.shape[1]
-    num_classes = y_data.nunique()
-
-    x_train, _, y_train, _ = train_test_split(
-        x_data, y_data, test_size=0.2, stratify=y_data
-    )
+    x_train, y_train = train_data.drop(columns=["Drug"]), train_data["Drug"]
+    x_shape = x_train.shape[1]
+    num_classes = y_train.nunique()
 
     column_list = ["Sex", "BP", "Cholesterol"]
     encoder = Encoder(column_list)
@@ -32,27 +36,38 @@ def main():
     train_data = MyDataset(x_train, y_train, encoder, mode="train")
 
     train_subset, val_subset = random_split(
-        train_data, [int(len(train_data) * 0.8), int(len(train_data) * 0.2)]
+        train_data,
+        [
+            int(len(train_data) * cfg.train.train_size),
+            int(len(train_data) * cfg.train.val_size),
+        ],
     )
 
-    train_loader = DataLoader(dataset=train_subset, shuffle=True, batch_size=16)
-    val_loader = DataLoader(dataset=val_subset, shuffle=False, batch_size=16)
+    train_loader = DataLoader(
+        dataset=train_subset, shuffle=True, batch_size=cfg.train.batch_size
+    )
+    val_loader = DataLoader(
+        dataset=val_subset, shuffle=False, batch_size=cfg.train.batch_size
+    )
 
     model = ClassificationNetwork(x_shape, num_classes).to(DEVICE)
 
-    number_epoch = 100
-    learning_rate = 0.01
     min_val_loss = 10000
 
-    train_loss_list = []
-    val_loss_list = []
-    train_accuracy_list = []
-    val_accuracy_list = []
+    mlflow.set_tracking_uri(cfg.mlflow.get("tracking_uri", "http://127.0.0.1:5000"))
+    os.environ["MLFLOW_ARTIFACT_ROOT"] = cfg.mlflow.artifact_root
+    exp_id = mlflow.set_experiment(f"training-{cfg.model.model_name}").experiment_id
+    with mlflow.start_run(experiment_id=exp_id, run_name=f"{1}"):
+        mlflow.log_params(cfg)
+    for train_data, train_label in train_loader:
+        break
 
-    opt = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    mlflow.models.infer_signature(train_data.numpy(), train_label.numpy())
+
+    opt = torch.optim.Adam(model.parameters(), lr=cfg.train.learning_rate)
     loss_func = nn.CrossEntropyLoss()
 
-    for _ in range(number_epoch):
+    for epoch in range(cfg.train.number_epoch):
         sum_train_loss = 0
         sum_val_loss = 0
         sum_correct_train_prediction = 0
@@ -85,18 +100,35 @@ def main():
                 val_prediction == val_label.to(DEVICE)
             ).item()
         if val_loss < min_val_loss:
-            torch.save(model.state_dict(), "model.pt")
+            torch.save(model.state_dict(), "data/model.pt")
             min_val_loss = val_loss
 
-        mean_train_loss = sum_train_loss / len(train_loader.sampler)
-        mean_val_loss = sum_val_loss / len(val_loader.sampler)
+        train_loss = sum_train_loss / len(train_loader.sampler)
+        val_loss = sum_val_loss / len(val_loader.sampler)
 
-        train_loss_list.append(mean_train_loss)
-        val_loss_list.append(mean_val_loss)
-        train_accuracy_list.append(
-            sum_correct_train_prediction / len(train_loader.sampler)
-        )
-        val_accuracy_list.append(sum_correct_val_prediction / len(val_loader.sampler))
+        train_accuracy = sum_correct_train_prediction / len(train_loader.sampler)
+        val_accuracy = sum_correct_val_prediction / len(val_loader.sampler)
+
+        mlflow.log_metric("train_loss", train_loss, epoch)
+        mlflow.log_metric("train_accuracy", train_accuracy, epoch)
+        mlflow.log_metric("val_loss", val_loss, epoch)
+        mlflow.log_metric("val_accuracy", val_accuracy, epoch)
+
+    if cfg.onnx.save:
+        with torch.no_grad():
+            torch.onnx.export(
+                model,
+                train_data.to(DEVICE),
+                cfg.onnx.path_to_save,
+                export_params=True,
+                opset_version=15,
+                input_names=["INPUTS"],
+                output_names=["OUTPUTS"],
+                dynamic_axes={
+                    "INPUTS": {0: "BATCH_SIZE"},
+                    "OUTPUTS": {0: "BATCH_SIZE"},
+                },
+            )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+outs:
+- md5: 1249826f7ad90a35a13babdb5a8732af
+  size: 5386
+  isexec: true
+  hash: md5
+  path: train-drug200.csv

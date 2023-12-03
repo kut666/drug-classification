@@ -3,7 +3,7 @@ This module is designed for to create a dataset from a csv file.
 """
 import pandas as pd
 import torch
-from encoder import Encoder
+from encoder import Encoder, encoder_target
 from torch.utils.data import Dataset
 
 
@@ -20,7 +20,7 @@ class MyDataset(Dataset):
         )
         self.mode = mode
         if self.mode != "test":
-            self.y_data = torch.tensor(encoder.encoder_target(y_data), dtype=torch.int64)
+            self.y_data = torch.tensor(encoder_target(y_data), dtype=torch.int64)
 
     def __len__(self):
         return self.x_data.size(0)

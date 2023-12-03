@@ -1,0 +1,6 @@
+outs:
+- md5: 6bdd220d4143d28a5db08db06ce7d09f
+  size: 1372
+  isexec: true
+  hash: md5
+  path: test-drug200.csv
