@@ -1,0 +1,29 @@
+name: "onnx-logreg"
+platform: "onnxruntime_onnx"
+max_batch_size: 16
+
+
+input [
+    {
+        name: "INPUTS"
+        data_type: TYPE_FP32
+        dims: [ 16 ]
+    }
+]
+
+output [
+    {
+        name: "OUTPUTS"
+        data_type: TYPE_FP32
+        dims: [ 16 ]
+    }
+]
+
+instance_group [
+    {
+        count: 1
+        kind: KIND_CPU
+    }
+]
+
+dynamic_batching: { }
